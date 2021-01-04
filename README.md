@@ -2,7 +2,7 @@
 
 jenv is a tool to manage Java Environment
 
-## What's jEnv ?
+## What's jenv ?
 
 This is an updated fork of `jenv`, a beloved Java environment manager adapted from `rbenv`.
 
@@ -49,3 +49,32 @@ This is an updated fork of `jenv`, a beloved Java environment manager adapted fr
 3. Run `pyenv` to see list of commands it supports
 
 ## Usage
+
+### 1.Lists all Java versions
+
+```powershell
+> jenv versions
+1.5.0_22
+1.6.0_45
+1.7.0_80
+1.8.0_271
+*11.0.9(set by /Users/user/.jenv/version)
+```
+
+### 2.Setting a Global Java Version
+
+```powershell
+> jenv global 1.8.0_271
+```
+
+### 3.Setting a Local Java Version
+
+```powershell
+> jenv local 1.7.0_80
+```
+
+### 4.Setting a Shell Java Version
+
+```powershell
+> jenv shell 1.5.0_22
+```

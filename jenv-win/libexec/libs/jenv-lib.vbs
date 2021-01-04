@@ -43,6 +43,14 @@ Sub PrintLog(log)
     End If
 End Sub
 
+Function IsCmd()
+    If strJenvShell = "cmd" Then
+        IsCmd = True
+    Else
+        IsCmd = False
+    End If
+End Function
+
 Function IsVersion(version)
     Dim re
     Set re = new regexp
@@ -65,6 +73,35 @@ Function GetBinDir(version)
     End If
     GetBinDir = strBinDir
 End Function
+
+Sub ScriptExecute(strCmd)
+    PrintLog "pyenv.vbs: ScriptExecute"
+    Dim utfStream
+    Dim outStream
+    Set utfStream = CreateObject("ADODB.Stream")
+    Set outStream = CreateObject("ADODB.Stream")
+    With utfStream
+        .CharSet = "utf-8"
+        .Mode = 3 ' adModeReadWrite
+        .Open
+        .WriteText(strCmd & vbCrLf)
+        .Position = 3
+    End With
+    With outStream
+        .Type = 1 ' adTypeBinary
+        .Mode = 3 ' adModeReadWrite
+        .Open
+        utfStream.CopyTo outStream
+        If IsCmd() Then
+            .SaveToFile strJenvHome & "\exec.bat", 2
+        Else
+            .SaveToFile strJenvHome & "\exec.ps1", 2
+        End If
+        
+        .Close
+    End With
+    utfStream.Close
+End Sub
 
 Function GetCurrentVersionGlobal()
     GetCurrentVersionGlobal = Null
@@ -123,6 +160,7 @@ Function GetCurrentVersion()
 End Function
 
 Function GetCurrentVersionNoError()
+    PrintLog "jenv-lib.vbs: GetCurrentVersionNoError"
     Dim str
     str = GetCurrentVersionShell
     If IsNull(str) Then str = GetCurrentVersionLocal(strCurrent)
@@ -166,6 +204,8 @@ End Function
 
 
 Sub Rehash()
+    PrintLog "jenv-lib.vbs: Rehash"
+    
     Dim file
 
     If Not objfs.FolderExists(strDirShims) Then objfs.CreateFolder(strDirShims)
@@ -177,10 +217,14 @@ Sub Rehash()
     Dim strBinDir
     Dim dictExts
     Dim strBaseName
-
     ' test files exist
     strVersion = GetCurrentVersionNoError()
-    strBinDir  = GetBinDir(strVersion(0))
+    If IsNull(strVersion) Then
+        WScript.Echo "Please set the global Java version at least"
+        Exit Sub
+    End If
+    strBinDir = GetBinDir(strVersion(0))
+
 
     If objfs.FolderExists(strBinDir) Then
         Set dictExts = GetExtensions()
@@ -194,11 +238,13 @@ Sub Rehash()
 End Sub
 
 Sub CreateVersionsFolder()
-    ' WScript.Echo "jenv-lib.vbs: CreateVersionsFolder"
+    PrintLog "jenv-lib.vbs: CreateVersionsFolder"
+
     Dim objsa
     Dim objVersFolder
     Dim strLinkTarget
-    
+    Dim boolDirVersExists
+
     If objfs.FolderExists(strDirVers) Then
         set objVersFolder = objfs.GetFolder(strDirVers)
         ' get symbolic link target
@@ -214,23 +260,23 @@ Sub CreateVersionsFolder()
     End If
     ' %JENV_VERSIONS% no change
     If strLinkTarget = strJenvVersions Then Exit Sub
-
     '%JENV_VERSIONS% changed
     If strJenvVersions <> "" Then
         If objfs.FolderExists(strJenvVersions) Then
-            If IsEmpty(strLinkTarget) Then 
+            ' versions exists and it is normal folder
+            If IsEmpty(strLinkTarget) And Not IsEmpty(objVersFolder) Then
                 objfs.MoveFolder strDirVers, strOriginDirVers
             Else
                 objws.Exec("cmd /c rmdir """ & objVersFolder & """")
             End If
-            If strJenvVersions <> strLinkTarget Then 
+            If strJenvVersions <> strLinkTarget Then
                 Set objsa = CreateObject("Shell.Application")
                 objsa.ShellExecute "cmd", " /c mklink /d """ & strDirVers & """ """ & strJenvVersions & """", "", "runas", 1
             End If
             Exit Sub
         End If
     End If
-
+    
     If IsEmpty(objVersFolder) Then
         objfs.CreateFolder(objVersFolder)
     Else

@@ -20,7 +20,7 @@ Import "libs\jenv-lib.vbs"
 
 Sub PrintHelp(cmd, exitCode)
     Dim help
-    help = getCommandOutput("cmd /c """& strDirLibs &"\"& cmd &".bat"" --help")
+    help = getCommandOutput("%ComSpec% /c """& strDirLibs &"\"& cmd &".bat"" --help")
     WScript.Echo help
     WScript.Quit exitCode
 End Sub
@@ -45,8 +45,8 @@ Sub ShowHelp()
      WScript.Echo "For full documentation, see: https://github.com/hanlimin/jenv-win/#readme"
 End Sub
 
-Sub ExecCommand(strCmd)
-    ' WScript.echo "pyenv-lib.vbs exec command..!"
+Sub ScriptExecute(strCmd)
+    PrintLog "pyenv.vbs: ScriptExecute"
     Dim utfStream
     Dim outStream
     Set utfStream = CreateObject("ADODB.Stream")
@@ -55,7 +55,6 @@ Sub ExecCommand(strCmd)
         .CharSet = "utf-8"
         .Mode = 3 ' adModeReadWrite
         .Open
-        .WriteText("chcp 1250 > NUL" & vbCrLf)
         .WriteText(strCmd & vbCrLf)
         .Position = 3
     End With
@@ -72,7 +71,7 @@ End Sub
 
 Sub CommandExecute(arg)
     PrintLog "pyenv.vbs: CommandExecute"
-    
+
     If arg.Count >= 2 Then
         If arg(1) = "--help" Then PrintHelp "pyenv-exec", 0
     End If
@@ -80,9 +79,8 @@ Sub CommandExecute(arg)
     Dim strCmd
     Dim strBinDir
     strBinDir = GetBinDir(GetCurrentVersion()(0))
-    strCmd = "set PATH="& strBinDir &";%PATH%"& vbCrLf
     If arg.Count > 1 Then
-        strCmd = strCmd &""""& strBinDir &"\"& arg(1) &""""
+        strCmd = """"& strBinDir &"\"& arg(1) & """"
         Dim idx
         If arg.Count > 2 Then
             For idx = 2 To arg.Count - 1
@@ -90,7 +88,10 @@ Sub CommandExecute(arg)
             Next
         End If
     End If
-    ExecCommand(strCmd)
+    ' the output printed with java is comming in stderr
+    strCmd = "%ComSpec% /c " & """"& strCmd & """ 2>&1"
+    Set objCmdExec= objws.Exec(strCmd)
+    WScript.Echo objCmdExec.StdOut.ReadAll
 End Sub
 
 Function GetCommandList()
@@ -135,7 +136,7 @@ Sub CommandScriptVersion(arg)
         ' Dim list
         ' Set list = GetCommandList
         If arg(0) = "--version" Then
-            WScript.Echo getCommandOutput("cmd /c """& strDirLibs &"\jenv---version.bat""")
+            WScript.Echo getCommandOutput("%ComSpec% /c """& strDirLibs &"\jenv---version.bat""")
         Else 
              WScript.Echo "unknown jenv command '"& arg(0) &"'"
         End If
@@ -178,21 +179,30 @@ Sub CommandLocal(arg)
         If arg(1) = "--help" Then PrintHelp "jenv-local", 0
     End If
 
+    Dim currentDir
+    Dim version
     Dim strVersion
     Dim strLocalVersionFile
 
-    strVersion             = GetCurrentVersionLocal(strCurrent)
-    strLocalVersionFile = strCurrent & strVerFile
+    currentDir = strCurrent
+
+    version = GetCurrentVersionLocal(currentDir)
+    If IsNull(version) Then
+        strLocalVersionFile = strCurrent & strVerFile
+    Else
+        strVersion = version(0)
+        strLocalVersionFile = version(1)
+    End If
+    
     If arg.Count < 2 Then
-        If IsNull(strVersion) Then
+        If IsEmpty(strVersion) Then
             WScript.Echo "no local version configured for this directory"
         Else
-            WScript.Echo strVersion(0)
+            WScript.Echo strVersion
         End If
     Else
         If arg(1) = "--unset" Then
-            strVersion = ""
-            If objfs.FolderExists(strLocalVersionFile) Then objfs.DeleteFile strLocalVersionFile, True
+            If objfs.FileExists(strLocalVersionFile) Then objfs.DeleteFile strLocalVersionFile, True
             Exit Sub
         Else
             strVersion = arg(1)
@@ -203,6 +213,7 @@ Sub CommandLocal(arg)
         If objfs.FileExists(strLocalVersionFile) Then
             Set objFile = objfs.OpenTextFile(strLocalVersionFile, 2)
         Else
+            WScript.Echo strLocalVersionFile
             Set objFile = objfs.CreateTextFile(strLocalVersionFile, True)
         End If
         objFile.WriteLine(strVersion)
@@ -222,16 +233,24 @@ Sub CommandShell(arg)
         If IsNull(strVersion) Then
             WScript.Echo "no shell-specific version configured"
         Else
-            WScript.Echo ver(0)
+            WScript.Echo strVersion(0)
         End If
     Else
         If arg(1) = "--unset" Then
-            strVersion = ""
+            If IsCmd() Then
+                ScriptExecute("set JENV_VERSION=")
+            Else
+                ScriptExecute("del env:JENV_VERSION")
+            End If
         Else
             strVersion = arg(1)
             GetBinDir(strVersion)
+            If IsCmd() Then
+                ScriptExecute("set JENV_VERSION=" & strVersion)
+            Else
+                ScriptExecute("$env:JENV_VERSION="""& strVersion &"""")
+            End If
         End If
-        ExecCommand("endlocal"& vbCrLf &"set JENV_VERSION="& strVersion)
     End If
 End Sub
 
@@ -252,31 +271,23 @@ Sub CommandVersions(arg)
         If arg(1) = "--help" Then PrintHelp "jenv-versions", 0
     End If
 
-    Dim isBare
-    isBare = False
-    If arg.Count >= 2 Then
-        If arg(1) = "--bare" Then isBare = True
-    End If
-
     If Not objfs.FolderExists(strDirVers) Then objfs.CreateFolder(strDirVers)
 
-    Dim curVer
-    curVer = GetCurrentVersionNoError
-    If IsNull(curVer) Then
-        curVer = Array("", "")
+    Dim version
+    version = GetCurrentVersionNoError
+    If IsNull(version) Then
+        version = Array("", "")
     End If
 
     Dim dir
-    Dim ver
+    Dim strVersionsItem
 
     For Each dir In objfs.GetFolder(strDirVers).subfolders
-        ver = objfs.GetFileName(dir)
-        If isBare Then
-            WScript.Echo ver
-        ElseIf ver = curVer(0) Then
-            WScript.Echo "* "& ver &" (set by "& curVer(1) &")"
+        strVersionsItem = objfs.GetFileName(dir)
+        If strVersionsItem = version(0) Then
+            WScript.Echo "* "& strVersionsItem &" (set by "& version(1) &")"
         Else
-            WScript.Echo "  "& ver
+            WScript.Echo strVersionsItem
         End If
     Next
     
@@ -289,7 +300,7 @@ Sub CommandsEnvironment(arg)
     if arg.Count < 2 Then
         If objEnv.Item("JENV") <> "" Then WScript.Echo "set JENV=" & objEnv.Item("JENV")
         If objEnv.Item("JENV_VERSIONS") <> "" Then WScript.Echo "set JENV_VERSIONS=" & objEnv.Item("JENV_VERSIONS")
-    Else        
+    Else
         Dim strPath
         Dim objPathDict
         
@@ -299,8 +310,8 @@ Sub CommandsEnvironment(arg)
         Case "--help" PrintHelp "jenv-envs", 0
         Case "--init"
             If objEnv.Item("JENV") <> "" Then Exit Sub
-            objws.Exec("cmd /c setx JENV """ & strJenvHome & """")
-            objws.Exec("cmd /c setx Path """ & "%JENV%\bin;%JENV%\shims;" & strPath & """")
+            objws.Exec("%ComSpec% /c setx JENV """ & strJenvHome & """")
+            objws.Exec("%ComSpec% /c setx Path """ & "%JENV%\bin;%JENV%\shims;" & strPath & """")
             If Not objfs.FolderExists(strDirShims) Then objfs.CreateFolder(strDirShims)
         Case "--unset"
             objEnv.Remove("JENV")

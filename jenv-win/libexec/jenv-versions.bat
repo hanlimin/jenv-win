@@ -4,7 +4,7 @@ setlocal
 if "%1" == "--help" (
 echo Usage: jenv versions [--bare] [--skip-aliases]
 echo.
-echo Lists all Python versions found in `$JENV_ROOT/versions/*'.
+echo Lists all Java versions found in `$JENV/versions/*'.
 EXIT /B
 )
 

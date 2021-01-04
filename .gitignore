@@ -1,7 +1,3 @@
 /jenv-win/shims
 /jenv-win/version
 /jenv-win/versions
-workspace.code-workspace
-
-*.log
-hs_err_pid*

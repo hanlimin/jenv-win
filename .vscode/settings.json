@@ -1,3 +1,0 @@
-{
-  "vbs.includes": ["${workspaceFolder}\\jenv-win\\libexec\\libs\\jenv-lib.vbs"]
-}
